@@ -6,7 +6,7 @@
   tasks:
     - name: Create the default Desktop Settings
       copy:
-        src: "files/xfce4-desktop.xml"
-        dest: "/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+        src: files/xfce4-desktop.xml
+        dest: /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
         mode: 0644
 
