@@ -1,0 +1,6 @@
+---
+- name: Configure xfce
+  hosts: localhost
+  gather_facts: true
+
+  tasks:
