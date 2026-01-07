@@ -1,0 +1,12 @@
+---
+- name: Configure xfce
+  hosts: localhost
+  gather_facts: true
+
+  tasks:
+    - name: Create the default Desktop Settings
+      builtin.copy:
+        src: "files/xfce4-desktop.xml"
+        dest: "/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+        mode: 0644
+
