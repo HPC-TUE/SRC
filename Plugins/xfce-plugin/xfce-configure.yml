@@ -24,7 +24,7 @@
     - name: Copy the Autostart Desktop Launchers-copy
       copy:
         src: files/copyapps.desktop
-        dest: /etc/xdg/autostart/copyapps.desktop
+        dest: /etc/xdg/autostart/zz_copyapps.desktop
         mode: 0644
     - name: Create the default Desktop Settings
       copy:
