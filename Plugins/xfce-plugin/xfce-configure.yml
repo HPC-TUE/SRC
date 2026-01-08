@@ -9,4 +9,13 @@
         src: files/xfce4-desktop.xml
         dest: /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
         mode: 0644
-
+    - name: Create Desktop Launchers
+      copy:
+        src: files/code.desktop
+        dest: /etc/skel/Desktop/code.desktop
+        mode: 0644
+    - name: Add EESSI init in .bashrc
+      lineinfile:
+        line: source /cvmfs/software.eessi.io/versions/2023.06/init/bash
+        path: /etc/skel/.bashrc
+        
