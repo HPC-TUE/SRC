@@ -3,6 +3,6 @@ Type=Application
 Name=OpenFOAM/v2406
 Comment=
 Exec=bash -c "source /cvmfs/software.eessi.io/versions/2023.06/init/bash;ml OpenFoam/v2406 ;source $FOAM_BASH;clear;exec bash;"
-Icon=paraviewicon
+Icon=openfoamicon
 Terminal=true
 StartupNotify=false
