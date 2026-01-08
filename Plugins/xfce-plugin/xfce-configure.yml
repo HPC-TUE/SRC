@@ -6,8 +6,8 @@
   tasks:
       - name: Copy the Desktop Background to correct location
       copy:
-        src: files/
-        dest: 
+        src: files/SCC-OpenFOAM-workshop.png
+        dest: /usr/share/backgrounds/xfce/SCC-OpenFOAM-workshop.png
         mode: 0644
     - name: Create the default Desktop Settings
       copy:
