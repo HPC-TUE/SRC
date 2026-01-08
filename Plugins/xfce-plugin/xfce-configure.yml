@@ -19,7 +19,7 @@
       copy:
         src: files/{{item}}.desktop
         dest: /usr/share/applications/{{item}}.desktop
-        mode: 0644
+        mode: 0755
       with_items: ['paraview','openfoam']
     - name: Copy the Autostart Desktop Launchers-copy
       copy:

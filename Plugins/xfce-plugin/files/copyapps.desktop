@@ -2,7 +2,7 @@
 Type=Application
 Name=Copy Desktop Items
 Comment=
-Exec=bash -c "cp /usr/share/applications/code.desktop ~/Desktop/.;cp /usr/share/applications/paraview.desktop ~/Desktop/.;cp /usr/share/applications/openfoam.desktop ~/Desktop/."
+Exec=bash -c "cp /usr/share/applications/code.desktop ~/Desktop/.;cp /usr/share/applications/paraview.desktop ~/Desktop/.;cp /usr/share/applications/openfoam.desktop ~/Desktop/.;pkill xfdesktop"
 Icon=vscode
 Terminal=false
 StartupNotify=false
