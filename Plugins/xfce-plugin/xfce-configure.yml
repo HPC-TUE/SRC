@@ -4,6 +4,11 @@
   gather_facts: true
 
   tasks:
+      - name: Copy the Desktop Background to correct location
+      copy:
+        src: files/
+        dest: 
+        mode: 0644
     - name: Create the default Desktop Settings
       copy:
         src: files/xfce4-desktop.xml
