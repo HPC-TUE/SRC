@@ -24,8 +24,9 @@
         src: files/code.desktop
         dest: /etc/skel/Desktop/code.desktop
         mode: 0644
-    - name: Add EESSI init in .bashrc
-      lineinfile:
-        line: source /cvmfs/software.eessi.io/versions/2023.06/init/bash
-        path: /etc/skel/.bashrc
+    - name: Add EESSI init in profile.d
+      copy:
+        src: files/EESSI-init.sh
+        dest: /etc/profile.d/EESSI-init.sh
+        mode: 0644
         
