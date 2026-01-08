@@ -14,7 +14,7 @@
         src: files/{{item}}.png
         dest: /usr/share/pixmaps/{{item}}.png
         mode: 0644
-      with-items: ['paraviewicon','openfoamicon'
+      with-items: ['paraviewicon','openfoamicon']
     - name: Create the default Desktop Settings
       copy:
         src: files/xfce4-desktop.xml
