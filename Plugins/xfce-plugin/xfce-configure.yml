@@ -15,6 +15,11 @@
         dest: /usr/share/pixmaps/{{item}}.png
         mode: 0644
       with-items: ['paraviewicon','openfoamicon']
+    - name: Copy the Autostart Desktop Launchers-copy
+      copy:
+        src: files/copyapps.desktop
+        dest: /etc/xdg/autostart/copyapps.desktop
+        mode: 0644
     - name: Create the default Desktop Settings
       copy:
         src: files/xfce4-desktop.xml

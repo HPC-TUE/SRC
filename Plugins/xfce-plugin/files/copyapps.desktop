@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Copy Desktop Items
+Comment=
+Exec=cp /usr/share/applications/code.desktop ~/Desktop/code.desktop
+Icon=vscode
+Terminal=false
+StartupNotify=false
