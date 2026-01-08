@@ -14,9 +14,9 @@
         src: files/xfce4-desktop.xml
         dest: /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
         mode: 0644
-    - name: Add EESSI init in profile.d
-      copy:
-        src: files/EESSI-init.sh
-        dest: /etc/profile.d/EESSI-init.sh
-        mode: 0644
+    - name: Add EESSI init in bash.bashrc
+      lineinfile:
+        line: source /cvmfs/software.eessi.io/versions/2023.06/init/bash
+        path: /etc/bash.bashrc
+        
         
