@@ -15,6 +15,12 @@
         dest: /usr/share/pixmaps/{{item}}.png
         mode: 0644
       with_items: ['paraviewicon','openfoamicon']
+    - name: Copy the Desktop launchers
+      copy:
+        src: files/{{item}}.desktop
+        dest: /usr/share/applications/{{item}}.desktop
+        mode: 0644
+      with_items: ['paraview','openfoam']
     - name: Copy the Autostart Desktop Launchers-copy
       copy:
         src: files/copyapps.desktop
