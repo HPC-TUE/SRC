@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ParaView
+Comment=
+Exec=bash -c "source /cvmfs/software.eessi.io/versions/2023.06/init/bash;ml ParaView;paraview"
+Icon=paraviewicon
+Terminal=false
+StartupNotify=false
