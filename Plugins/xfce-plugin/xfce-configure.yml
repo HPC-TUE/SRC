@@ -9,6 +9,12 @@
         src: files/SCC-OpenFOAM-workshop.png
         dest: /usr/share/backgrounds/xfce/SCC-OpenFOAM-workshop.png
         mode: 0644
+    - name: Copy the Desktop icons
+      copy:
+        src: files/{{item}}.png
+        dest: /usr/share/pixmaps/{{item}}.png
+        mode: 0644
+      with-items: ['paraviewicon','openfoamicon'
     - name: Create the default Desktop Settings
       copy:
         src: files/xfce4-desktop.xml
