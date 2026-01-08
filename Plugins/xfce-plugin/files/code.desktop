@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Visual Studio Code
+Comment=
+Exec=/usr/share/code/code %F
+Icon=vscode
+Terminal=false
+StartupNotify=false
