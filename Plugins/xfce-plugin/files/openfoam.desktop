@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=OpenFOAM/v2406
+Name=OpenFOAM Terminal
 Comment=
-Exec=bash -c "source /cvmfs/software.eessi.io/versions/2023.06/init/bash;ml OpenFOAM/v2406 ;source $FOAM_BASH;clear;exec bash;"
+Exec=/bin/bash -i -c "ml OpenFOAM/v2406 && source $FOAM_BASH;clear;echo 'FOAM_BASH Sourced';EESSI_SILENT=1 /bin/bash"
 Icon=openfoamicon
 Terminal=true
 StartupNotify=false
