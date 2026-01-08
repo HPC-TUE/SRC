@@ -2,7 +2,7 @@
 Type=Application
 Name=Copy Desktop Items
 Comment=
-Exec=cp /usr/share/applications/code.desktop ~/Desktop/code.desktop
+Exec=bash -c "cp /usr/share/applications/code.desktop ~/Desktop/.;cp /usr/share/applications/paraview.desktop ~/Desktop/."
 Icon=vscode
 Terminal=false
 StartupNotify=false
