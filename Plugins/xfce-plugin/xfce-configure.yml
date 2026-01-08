@@ -4,7 +4,7 @@
   gather_facts: true
 
   tasks:
-      - name: Copy the Desktop Background to correct location
+    - name: Copy the Desktop Background to correct location
       copy:
         src: files/SCC-OpenFOAM-workshop.png
         dest: /usr/share/backgrounds/xfce/SCC-OpenFOAM-workshop.png
