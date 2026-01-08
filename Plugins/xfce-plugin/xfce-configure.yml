@@ -14,6 +14,11 @@
         src: files/code.desktop
         dest: /etc/skel/Desktop/code.desktop
         mode: 0644
+    - name: Create skel Desktop dir
+      file:
+        path: /etc/skel/Desktop
+        state: directory
+        mode: 0755
     - name: Add EESSI init in .bashrc
       lineinfile:
         line: source /cvmfs/software.eessi.io/versions/2023.06/init/bash
