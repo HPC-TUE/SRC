@@ -1,8 +1,8 @@
-[Desktop Entry]
+foam2406[Desktop Entry]
 Type=Application
 Name=OpenFOAM Terminal
 Comment=
-Exec=/bin/bash -i -c "ml OpenFOAM/v2406 && source $FOAM_BASH;clear;echo 'FOAM_BASH Sourced';EESSI_SILENT=1 /bin/bash"
+Exec=/bin/bash -i -c "openfoam2406"
 Icon=openfoamicon
 Terminal=true
 StartupNotify=false
