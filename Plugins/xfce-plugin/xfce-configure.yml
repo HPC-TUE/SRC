@@ -31,9 +31,91 @@
         src: files/xfce4-desktop.xml
         dest: /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
         mode: 0644
-    - name: Add EESSI init in bash.bashrc
-      lineinfile:
-        line: source /cvmfs/software.eessi.io/versions/2023.06/init/bash
-        path: /etc/bash.bashrc
+#    - name: Add EESSI init in bash.bashrc
+#      lineinfile:
+#        line: source /cvmfs/software.eessi.io/versions/2023.06/init/bash
+#        path: /etc/bash.bashrc
         
-        
+    - name: docker | repo install
+      block:
+        - name: docker | apt key
+          ansible.builtin.get_url:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            dest: /etc/apt/keyrings/docker.asc
+        - name: docker | apt source
+          ansible.builtin.apt_repository:
+            repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+            state: present
+    - name: openfoam | repo install
+      block:
+        - name: openfoam | get install script
+          ansible.builtin.get_url:
+            url: https://dl.openfoam.com/add-debian-repo.sh
+            dest: /tmp/add-debian-repo.sh
+            mode: '0755'
+        - name: openfoam | run install script
+          ansible.builtin.command: /tmp/add-debian-repo.sh
+    - name: apptainer | repo install
+      ansible.builtin.apt_repository:
+        repo: "ppa:apptainer/ppa"
+        state: present
+
+    - name: update apt
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: docker | install packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+    - name: docker | ensure docker service is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+    - name: docker | get active users from shell and register output
+      ansible.builtin.command: "awk -F: -v ORS=\" \" '$3 > 1000 && $1 != \"nobody\" { print $1 }' /etc/passwd"
+      register: active_users
+    - name: docker | set active users fact from command output
+      ansible.builtin.set_fact:
+        active_users: "{{ active_users.stdout.split() }}"
+    - name: docker | add active user to docker group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: docker
+        append: yes
+      loop: "{{ active_users }}"
+
+    - name: openfoam | install with dependencies
+      ansible.builtin.apt:
+        name:
+          - build-essential 
+          - flex
+          - bison
+          - cmake
+          - zlib1g-dev
+          - libboost-system-dev
+          - libboost-thread-dev
+          - libopenmpi-dev
+          - openmpi-bin
+          - gnuplot
+          - libreadline-dev
+          - libncurses-dev
+          - libxt-dev
+          - libscotch-dev
+          - libcgal-dev
+          - openfoam2406-default
+        state: present
+
+    - name: apptainer | update apt
+      ansible.builtin.apt:
+        update_cache: yes
+    - name: apptainer | install apptainer
+      ansible.builtin.apt:
+        name: apptainer
+        state: present        
