@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Copy Desktop Items
+Comment=
+Exec=bash -c "sleep 5;cp /usr/share/applications/code.desktop ~/Desktop/.;cp /usr/share/applications/paraview.desktop ~/Desktop/.;cp /usr/share/applications/openfoam.desktop ~/Desktop/."
+Icon=vscode
+Terminal=false
+StartupNotify=false
