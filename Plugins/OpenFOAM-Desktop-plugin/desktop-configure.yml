@@ -115,4 +115,3 @@
       ansible.builtin.apt:
         name: apptainer
         state: present
-
