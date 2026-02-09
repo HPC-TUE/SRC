@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=OpenFOAM Terminal
-Comment=
-Exec=/bin/bash -i -c "openfoam2406"
-Icon=openfoamicon
-Terminal=true
-StartupNotify=false
