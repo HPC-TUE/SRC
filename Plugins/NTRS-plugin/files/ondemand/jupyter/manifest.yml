@@ -1,0 +1,9 @@
+---
+name: JupyterLab
+category: Interactive Apps
+subcategory: Servers
+role: batch_connect
+description: |
+  Launch JupyterLab as a Slurm job on the single-node Snellius training
+  cluster. Each session starts in your home directory and has a unique
+  password.

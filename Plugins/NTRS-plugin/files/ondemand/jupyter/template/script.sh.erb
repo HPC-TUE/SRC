@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+echo "TIMING - Starting main script at: $(date)"
+cd "${HOME}"
+
+# Use the isolated, read-only JupyterLab environment installed by Ansible.
+# An absolute executable path avoids dependence on a trainee's shell startup
+# files or removed OpenHPC modulefiles directory.
+export PATH="/opt/jupyterlab/bin:${PATH}"
+
+echo "TIMING - Starting JupyterLab at: $(date)"
+exec /opt/jupyterlab/bin/jupyter lab --config="${CONFIG_FILE}"

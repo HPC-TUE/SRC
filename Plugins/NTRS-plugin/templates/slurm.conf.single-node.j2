@@ -1,0 +1,50 @@
+# {{ ansible_managed }}
+# Minimal configuration for a single-node OpenHPC Slurm test cluster.
+
+ClusterName={{ slurm_cluster_name }}
+SlurmctldHost={{ slurm_node_name }}
+SlurmUser=slurm
+SlurmdUser=root
+
+AuthType=auth/munge
+CredType=cred/munge
+
+StateSaveLocation=/var/spool/slurmctld
+SlurmdSpoolDir=/var/spool/slurmd
+SlurmctldPort=6817
+SlurmdPort=6818
+SlurmctldTimeout=120
+SlurmdTimeout=300
+KillWait=30
+MinJobAge=300
+
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
+SlurmctldDebug=info
+SlurmdDebug=info
+
+SchedulerType=sched/backfill
+SelectType=select/cons_tres
+SelectTypeParameters=CR_Core_Memory
+DefMemPerCPU=1024
+SwitchType=switch/none
+MpiDefault=none
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/affinity
+PropagateResourceLimitsExcept=MEMLOCK
+Epilog=/etc/slurm/slurm.epilog.clean
+ReturnToService=2
+SlurmctldParameters=enable_configless
+LaunchParameters=use_interactive_step
+
+# Record basic job completion information without configuring SlurmDBD.
+JobAcctGatherFrequency=30
+JobAcctGatherType=jobacct_gather/none
+JobCompType=jobcomp/filetxt
+JobCompLoc=/var/log/slurm/slurm_jobcomp.log
+
+NodeName={{ slurm_node_name }} NodeHostname={{ ansible_facts.hostname }} CPUs={{ slurm_cpus }} RealMemory={{ slurm_real_memory_mb }} State=UNKNOWN
+# Share the node between jobs so --cpus-per-task is honored. With EXCLUSIVE,
+# every job claims the whole node and receives all CPUs regardless of the
+# requested count.
+PartitionName={{ slurm_partition_name }} Nodes={{ slurm_node_name }} Default=YES MaxTime=01:00:00 State=UP Oversubscribe=NO

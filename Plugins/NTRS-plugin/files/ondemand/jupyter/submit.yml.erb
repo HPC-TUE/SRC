@@ -1,0 +1,12 @@
+---
+# Generate an IP-based batch-connect session. The form supplies the Slurm
+# partition, wall time, and CPU count through OnDemand's predefined attributes.
+batch_connect:
+  template: "basic"
+script:
+  # Use Slurm's normal environment export for this app. Besides supporting
+  # srun, this avoids a Slurm 25.11 --export=NONE namespace failure in
+  # containers without CAP_SYS_ADMIN. Jupyter itself uses absolute paths.
+  copy_environment: true
+  native:
+    - "--cpus-per-task=<%= bc_num_slots.blank? ? 1 : bc_num_slots.to_i %>"

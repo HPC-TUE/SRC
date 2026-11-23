@@ -1,0 +1,18 @@
+---
+# Use the SCC logo supplied in configs.tar in the main navigation bar.
+dashboard_header_img_logo: "/public/scc-logo.png"
+
+# Name of the training portal. It is shown next to the SCC logo by the managed
+# view override in files/ondemand/dashboard/views/layouts/nav/_logo.html.erb
+# and used in the browser page titles.
+dashboard_title: "Not The Real Snellius"
+
+# Feature the training apps on the dashboard home page. Without this list the
+# "Pinned Apps" area is empty and users only see the navigation menus.
+# Entries are app tokens: sys/<app directory> under /var/www/ood/apps/sys.
+# Changes take effect for new per-user nginx processes (PUNs), so users must
+# log out and back in, or an administrator must stop their running PUN.
+pinned_apps:
+  - sys/jupyter
+  - sys/bc_desktop
+  - sys/shell

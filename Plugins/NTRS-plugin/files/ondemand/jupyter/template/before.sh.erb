@@ -1,0 +1,31 @@
+# Find a free high port on the allocated compute host.
+port=$(find_port "${host}")
+
+# Create a unique password for this session and store only its salted hash in
+# the generated Jupyter configuration. The plaintext value is returned through
+# OnDemand's connection parameters and submitted to Jupyter by view.html.erb.
+SALT="$(create_passwd 16)"
+password="$(create_passwd 32)"
+PASSWORD_SHA1="$(echo -n "${password}${SALT}" | openssl dgst -sha1 | awk '{print $NF}')"
+
+export CONFIG_FILE="${PWD}/jupyter_server_config.py"
+export jupyter_api="lab"
+
+# Keep the session configuration and password hash private to the trainee.
+(
+  umask 077
+  cat > "${CONFIG_FILE}" << EOL
+c.ServerApp.ip = '0.0.0.0'
+c.ServerApp.port = ${port}
+c.ServerApp.port_retries = 0
+c.ServerApp.base_url = '/node/${host}/${port}/'
+c.ServerApp.open_browser = False
+c.ServerApp.root_dir = '${HOME}'
+c.ServerApp.password = 'sha1:${SALT}:${PASSWORD_SHA1}'
+c.IdentityProvider.token = ''
+# Required for OnDemand's authenticated /node reverse proxy, including its
+# web sockets and the cross-path login POST used by the connection view.
+c.ServerApp.allow_origin = '*'
+c.ServerApp.disable_check_xsrf = True
+EOL
+)

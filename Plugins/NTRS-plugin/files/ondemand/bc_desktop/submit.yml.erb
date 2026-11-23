@@ -1,0 +1,22 @@
+---
+# Use OnDemand's VNC batch-connect template. The template creates a one-time
+# VNC password, starts Xvnc, starts websockify, and writes the connection
+# information used by the noVNC page in the dashboard.
+batch_connect:
+  template: "vnc"
+  name: "OnDemand Desktop"
+  geometry: "1280x720"
+  # The PUN environment that --export=ALL propagates does not reliably include
+  # /usr/local/bin, where the managed vncserver compatibility wrapper is
+  # installed. Prepend it in the job script, before ood_core starts the VNC
+  # server, so the wrapper is selected over the distribution
+  # /usr/bin/vncserver.
+  header: |
+    export PATH="/usr/local/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin}"
+script:
+  # Use Slurm's normal environment export for this app, matching JupyterLab.
+  # This also avoids a Slurm 25.11 --export=NONE namespace failure in
+  # containers without CAP_SYS_ADMIN.
+  copy_environment: true
+  native:
+    - "--cpus-per-task=<%= bc_num_slots.blank? ? 1 : bc_num_slots.to_i %>"

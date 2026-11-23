@@ -1,0 +1,1217 @@
+---
+- name: Install OpenHPC and configure a single-node Slurm test cluster
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    ohpc_repository_url: https://repos.openhpc.community/OpenHPC/3/EL_9
+    ohpc_release_package: "ohpc-release-3-1.el9.{{ ansible_facts.architecture }}.rpm"
+    ohpc_release_url: "{{ ohpc_repository_url }}/{{ ansible_facts.architecture }}/{{ ohpc_release_package }}"
+    ondemand_signing_key_url: https://yum.osc.edu/ondemand/RPM-GPG-KEY-ondemand-SHA512
+    ondemand_release_url: https://yum.osc.edu/ondemand/4.2/ondemand-release-web-4.2-1.el9.noarch.rpm
+    cvmfs_release_url: https://cvmrepo.s3.cern.ch/cvmrepo/yum/cvmfs-release-latest.noarch.rpm
+    eessi_config_url: https://github.com/EESSI/filesystem-layer/releases/download/latest/cvmfs-config-eessi-latest.noarch.rpm
+    eessi_modulefiles_dir: /opt/ohpc/pub/modulefiles/EESSI
+    eessi_versions:
+      - "2023.06"
+      - "2025.06"
+      - "2026.06"
+    jupyterlab_version: "4.6.6"
+    jupyterlab_install_dir: /opt/jupyterlab
+    slurm_cluster_name: ohpc-test
+    slurm_partition_name: rome
+    slurm_node_name: localhost
+    slurm_cpus: "{{ ansible_facts.processor_vcpus | default(ansible_facts.processor_count) }}"
+    # Cap the CPU selector in the interactive app forms. Each CPU reserves 1 GB
+    # (DefMemPerCPU), so two CPUs leave room for several sessions on the
+    # training node. Never offer more CPUs than the node actually has.
+    ood_max_cpus: "{{ [2, slurm_cpus | int] | min }}"
+    # Reserve approximately 5% of RAM for the operating system and Slurm.
+    slurm_real_memory_mb: "{{ ((ansible_facts.memtotal_mb | int) * 0.95) | int }}"
+    # SHA-512 hash for the shared initial training-account password.
+    hpc_user_password_hash: "$6$2La0yjF4na8ItmIo$I4UcWPm3XgEDA3xVN6OwcpwsAgNmQ5Hu5iMy/RVQnLd3l9.tZ7czG2j4aHLs2FsBpXTwhLqdPbnuKqSwZqm0o/"
+
+  tasks:
+    - name: Validate the target and installation scope
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == "Rocky"
+          - ansible_facts.distribution_major_version == "9"
+          - ansible_facts.architecture in ["x86_64", "aarch64"]
+          - ansible_play_hosts | length == 1
+          - ansible_facts.user_id == "root"
+        fail_msg: >-
+          This playbook supports exactly one Rocky Linux 9 host on x86_64 or
+          aarch64 and must be run as root on that host. Do not use this
+          single-node configuration on a multi-node production cluster.
+          Detected {{ ansible_facts.distribution }}
+          {{ ansible_facts.distribution_version }} on
+          {{ ansible_facts.architecture }} as
+          {{ ansible_facts.user_id }}.
+
+    - name: Verify that the Slurm node name resolves
+      ansible.builtin.command:
+        cmd: getent hosts "{{ slurm_node_name }}"
+      changed_when: false
+
+    - name: Install EPEL and the DNF configuration plugin
+      ansible.builtin.dnf:
+        name:
+          - epel-release
+          - dnf-plugins-core
+        state: present
+
+    - name: Enable the Rocky Linux CRB repository
+      community.general.dnf_config_manager:
+        name: crb
+        state: enabled
+
+    - name: Import the pinned OpenHPC package-signing key
+      ansible.builtin.rpm_key:
+        key: https://raw.githubusercontent.com/openhpc/ohpc/3.x/components/admin/ohpc-release/SOURCES/RPM-GPG-KEY-OpenHPC-3
+        fingerprint: "6E19 BE11 D9A0 82C0 0A7D B41A 7AC0 5F09 40A9 0CC8"
+        state: present
+
+    - name: Install the OpenHPC repository release package
+      ansible.builtin.dnf:
+        name:
+          - "{{ ohpc_release_url }}"
+        state: present
+
+    - name: Install OpenHPC Lmod and the Nano editor
+      ansible.builtin.dnf:
+        name:
+          - lmod-ohpc
+          - nano
+        state: present
+
+    # The packaged lmod.sh returns early whenever SLURM_NODELIST is set, which
+    # leaves shells inside a Slurm job without the module command. The Open
+    # OnDemand desktop terminals are such shells, so initialize Lmod whenever
+    # it is not already available instead.
+    - name: Initialize Lmod in every shell, including inside Slurm jobs
+      ansible.builtin.copy:
+        src: files/lmod.sh
+        dest: /etc/profile.d/lmod.sh
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the OpenHPC Slurm server and client packages
+      ansible.builtin.dnf:
+        name:
+          - ohpc-slurm-server
+          - ohpc-slurm-client
+        state: present
+
+    - name: Enable the Ruby and Node.js streams required by Open OnDemand
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/dnf
+          - -y
+          - module
+          - enable
+          - ruby:3.3
+          - nodejs:22
+      register: ondemand_module_enable
+      changed_when: "'Nothing to do' not in ondemand_module_enable.stdout"
+
+    - name: Import the pinned Open OnDemand package-signing key
+      ansible.builtin.rpm_key:
+        key: "{{ ondemand_signing_key_url }}"
+        fingerprint: "3D4C D7E7 D4BC 4526 3AC1 1388 C2AD B19A FD77 5498"
+        state: present
+
+    - name: Install the Open OnDemand web repository release package
+      ansible.builtin.dnf:
+        name: "{{ ondemand_release_url }}"
+        state: present
+
+    - name: Install Open OnDemand
+      ansible.builtin.dnf:
+        name: ondemand
+        state: present
+
+    - name: Install Open OnDemand PAM authentication and SELinux support
+      ansible.builtin.dnf:
+        name:
+          - mod_authnz_pam
+          - ondemand-selinux
+        state: present
+
+    - name: Install Python 3.11 for JupyterLab
+      ansible.builtin.dnf:
+        name:
+          - python3.11
+          - python3.11-pip
+        state: present
+
+    - name: Install JupyterLab in an isolated Python environment
+      ansible.builtin.pip:
+        name: "jupyterlab=={{ jupyterlab_version }}"
+        virtualenv: "{{ jupyterlab_install_dir }}"
+        virtualenv_command: /usr/bin/python3.11 -m venv
+        umask: "0022"
+
+    - name: Install the interactive desktop packages
+      ansible.builtin.dnf:
+        name:
+          - tigervnc-server
+          - xfce4-session
+          - xfwm4
+          - xfce4-panel
+          - xfce4-settings
+          - xfce4-terminal
+          - xfce4-notifyd
+          - xfce4-whiskermenu-plugin
+          - xfce4-taskmanager
+          - xfce4-screenshooter
+          - Thunar
+          - dbus-x11
+          - xterm
+          - dejavu-sans-fonts
+          - xorg-x11-fonts-misc
+          - xorg-x11-xauth
+          - python3-websockify
+        state: present
+
+    - name: Create the websockify wrapper directory
+      ansible.builtin.file:
+        path: /opt/websockify
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the websockify wrapper expected by the VNC template
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Wrapper expected by OnDemand's VNC template (WEBSOCKIFY_CMD).
+          exec /usr/bin/websockify "$@"
+        dest: /opt/websockify/run
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the TigerVNC compatibility wrapper for OnDemand
+      ansible.builtin.copy:
+        src: files/ondemand/vncserver-shim.sh
+        dest: /usr/local/bin/vncserver
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Verify that the installed vncserver compatibility wrapper responds
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - /usr/local/bin/vncserver
+          - --help
+      register: vncserver_wrapper_help
+      changed_when: false
+      failed_when: "'TigerVNC compatibility wrapper' not in vncserver_wrapper_help.stdout"
+
+    - name: Ensure the Open OnDemand Apache service is enabled and running
+      ansible.builtin.service:
+        name: httpd
+        state: started
+        enabled: true
+
+    - name: Read the Open OnDemand SELinux boolean states
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/getsebool
+          - -a
+      register: ondemand_selinux_booleans
+      changed_when: false
+      failed_when: false
+
+    - name: Enable the required Open OnDemand SELinux booleans
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/setsebool
+          - -P
+          - "{{ item }}=on"
+      loop:
+        - httpd_mod_auth_pam
+        - ondemand_manage_user_home_dir
+        - ondemand_use_slurm
+      when:
+        - ondemand_selinux_booleans.rc == 0
+        - "item + ' --> on' not in ondemand_selinux_booleans.stdout_lines"
+      changed_when: true
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Ensure the Open OnDemand configuration directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /etc/ood/config/ondemand.d
+        - /etc/ood/config/clusters.d
+        - /etc/ood/config/apps/dashboard/views/layouts/nav
+        - /etc/ood/config/apps/shell
+        - /var/www/ood/public
+        - /var/www/ood/apps/sys/jupyter/template
+        - /var/www/ood/apps/sys/bc_desktop/template/desktops
+
+    - name: Install the SCC logo for Open OnDemand
+      ansible.builtin.copy:
+        src: files/ondemand/scc-logo.png
+        dest: /var/www/ood/public/scc-logo.png
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the Open OnDemand portal and PAM authentication configuration
+      ansible.builtin.copy:
+        src: files/ondemand/ood_portal.yml
+        dest: /etc/ood/config/ood_portal.yml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Regenerate the Open OnDemand portal configuration
+      ansible.builtin.command:
+        argv:
+          - /opt/ood/ood-portal-generator/sbin/update_ood_portal
+          - --detailed-exitcodes
+      register: ood_portal_update
+      # update_ood_portal exits with 3 when it rewrites the Apache config.
+      changed_when: ood_portal_update.rc == 3
+      failed_when: ood_portal_update.rc not in [0, 3, 4]
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the Open OnDemand dashboard configuration
+      ansible.builtin.copy:
+        src: files/ondemand/ondemand.yml
+        dest: /etc/ood/config/ondemand.d/ondemand.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the dashboard configuration that shows the portal name next to the logo
+      ansible.builtin.copy:
+        src: files/ondemand/dashboard/views/layouts/nav/_logo.html.erb
+        dest: /etc/ood/config/apps/dashboard/views/layouts/nav/_logo.html.erb
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the Snellius cluster configuration for Open OnDemand
+      ansible.builtin.copy:
+        src: files/ondemand/snellius.yml
+        dest: /etc/ood/config/clusters.d/snellius.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the Apache PAM authentication module configuration
+      ansible.builtin.copy:
+        src: files/ondemand/55-authnz_pam.conf
+        dest: /etc/httpd/conf.modules.d/55-authnz_pam.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the Open OnDemand PAM service definition
+      ansible.builtin.copy:
+        src: /etc/pam.d/sshd
+        dest: /etc/pam.d/ood
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Restrict shadow password reads to root and the Apache group
+      ansible.builtin.file:
+        path: /etc/shadow
+        state: file
+        owner: root
+        group: apache
+        mode: "0640"
+
+    - name: Configure the Open OnDemand shell session limits
+      ansible.builtin.copy:
+        content: |
+          OOD_SHELL_INACTIVE_TIMEOUT_MS=3600000
+          OOD_SHELL_MAX_DURATION_MS=28800000
+          OOD_SHELL_PING_PONG=true
+        dest: /etc/ood/config/apps/shell/env
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the JupyterLab interactive app files
+      ansible.builtin.copy:
+        src: "files/ondemand/jupyter/{{ item }}"
+        dest: "/var/www/ood/apps/sys/jupyter/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - LICENSE.txt
+        - README.md
+        - icon.png
+        - manifest.yml
+        - submit.yml.erb
+        - view.html.erb
+        - template/after.sh
+        - template/before.sh.erb
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the executable JupyterLab job script template
+      ansible.builtin.copy:
+        src: files/ondemand/jupyter/template/script.sh.erb
+        dest: /var/www/ood/apps/sys/jupyter/template/script.sh.erb
+        owner: root
+        group: root
+        mode: "0755"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the resource-aware JupyterLab launch form
+      ansible.builtin.template:
+        src: files/ondemand/jupyter/form.yml.j2
+        dest: /var/www/ood/apps/sys/jupyter/form.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the interactive desktop app files
+      ansible.builtin.copy:
+        src: "files/ondemand/bc_desktop/{{ item }}"
+        dest: "/var/www/ood/apps/sys/bc_desktop/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - README.md
+        - manifest.yml
+        - submit.yml.erb
+        - template/before.sh.erb
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the executable interactive desktop job scripts
+      ansible.builtin.copy:
+        src: "files/ondemand/bc_desktop/{{ item }}"
+        dest: "/var/www/ood/apps/sys/bc_desktop/{{ item }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - template/script.sh.erb
+        - template/desktops/xfce.sh
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Install the interactive desktop launch form
+      ansible.builtin.template:
+        src: files/ondemand/bc_desktop/form.yml.j2
+        dest: /var/www/ood/apps/sys/bc_desktop/form.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the Open OnDemand Apache service
+
+    - name: Ensure the default OpenHPC modulefiles directory exists
+      ansible.builtin.file:
+        path: /opt/ohpc/pub/modulefiles
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Remove the former site modulefiles directory and profile override
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /opt/ohpc/pub/site-modulefiles
+        - /etc/profile.d/zz-hpc-training-lmod.sh
+
+    - name: Find the default OpenHPC modulefiles
+      ansible.builtin.find:
+        paths: /opt/ohpc/pub/modulefiles
+        recurse: false
+        hidden: true
+        file_type: any
+      register: ohpc_default_modulefiles
+
+    - name: Empty the default OpenHPC modulefiles directory
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ ohpc_default_modulefiles.files
+        | rejectattr('path', 'equalto', eessi_modulefiles_dir) }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Import the pinned CernVM package-signing keys
+      ansible.builtin.rpm_key:
+        key: "{{ item.url }}"
+        fingerprint: "{{ item.fingerprint }}"
+        state: present
+      loop:
+        - url: https://cvmrepo.s3.cern.ch/cvmrepo/yum/RPM-GPG-KEY-CernVM-2048
+          fingerprint: "FD80 468D 49B3 B24C 3417 41FC 8CE0 A76C 497E A957"
+        - url: https://cvmrepo.s3.cern.ch/cvmrepo/yum/RPM-GPG-KEY-CernVM
+          fingerprint: "70B9 8904 8820 8E31 5ED4 5208 230D 389D 8AE4 5CE7"
+
+    - name: Install the CVMFS repository release package
+      ansible.builtin.dnf:
+        name: "{{ cvmfs_release_url }}"
+        state: present
+
+    - name: Install the CVMFS client
+      ansible.builtin.dnf:
+        name:
+          - cvmfs
+        state: present
+
+    - name: Install the EESSI CVMFS configuration
+      ansible.builtin.dnf:
+        name: "{{ eessi_config_url }}"
+        state: present
+        # The upstream cvmfs-config-eessi RPM is not signed.
+        disable_gpg_check: true
+
+    - name: Configure the CVMFS client for EESSI
+      ansible.builtin.copy:
+        content: |
+          # Managed by the Not The Real Snellius playbook.
+          CVMFS_CLIENT_PROFILE="single"
+          CVMFS_QUOTA_LIMIT=10000
+        dest: /etc/cvmfs/default.local
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Check for an existing CVMFS automount map
+      ansible.builtin.stat:
+        path: /etc/auto.master.d/cvmfs.autofs
+      register: eessi_automount_map
+
+    - name: Run the CVMFS client setup
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/cvmfs_config
+          - setup
+      changed_when: false
+
+    - name: Check whether this host provides the FUSE device
+      ansible.builtin.stat:
+        path: /dev/fuse
+      register: eessi_fuse_device
+
+    - name: Enable the automount service used by CVMFS
+      ansible.builtin.service:
+        name: autofs
+        state: "{{ 'started' if eessi_fuse_device.stat.exists else 'stopped' }}"
+        enabled: true
+
+    - name: Reload the automount service to load the new CVMFS maps
+      ansible.builtin.service:
+        name: autofs
+        state: restarted
+      when:
+        - eessi_fuse_device.stat.exists
+        - not eessi_automount_map.stat.exists
+
+    - name: Probe the EESSI CVMFS repository
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/timeout
+          - "120"
+          - /usr/bin/cvmfs_config
+          - probe
+          - software.eessi.io
+      register: eessi_cvmfs_probe
+      changed_when: false
+      failed_when: false
+
+    - name: Verify that the EESSI repository can be mounted
+      ansible.builtin.assert:
+        that:
+          - eessi_cvmfs_probe.rc == 0
+          - "'Failed' not in eessi_cvmfs_probe.stdout"
+        fail_msg: >-
+          The CVMFS client could not mount software.eessi.io, so the EESSI
+          modulefiles cannot be installed. Ensure that /dev/fuse is available
+          and that the autofs service is running. Probe output:
+          {{ eessi_cvmfs_probe.stdout }} {{ eessi_cvmfs_probe.stderr }}
+        quiet: true
+      when: eessi_fuse_device.stat.exists
+
+    - name: Warn that EESSI could not be mounted in this environment
+      ansible.builtin.debug:
+        msg: >-
+          /dev/fuse is not available, so CVMFS cannot mount software.eessi.io.
+          The CVMFS client and the EESSI configuration are installed, but the
+          EESSI modulefiles were not copied. Run this playbook on a host with
+          FUSE support to install them.
+      when: not eessi_fuse_device.stat.exists
+
+    - name: Remove stale EESSI modulefiles when CVMFS cannot be mounted
+      ansible.builtin.file:
+        path: "{{ eessi_modulefiles_dir }}"
+        state: absent
+      when: not eessi_fuse_device.stat.exists
+
+    - name: Create the EESSI modulefiles directory
+      ansible.builtin.file:
+        path: "{{ eessi_modulefiles_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - eessi_fuse_device.stat.exists
+        - eessi_cvmfs_probe.rc == 0
+
+    - name: Install the EESSI modulefiles
+      ansible.builtin.copy:
+        src: "/cvmfs/software.eessi.io/versions/{{ item }}/init/modules/EESSI/{{ item }}.lua"
+        dest: "{{ eessi_modulefiles_dir }}/{{ item }}.lua"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ eessi_versions }}"
+      loop_control:
+        label: "{{ item }}"
+      when:
+        - eessi_fuse_device.stat.exists
+        - eessi_cvmfs_probe.rc == 0
+
+    - name: Secure the MUNGE configuration directory
+      ansible.builtin.file:
+        path: /etc/munge
+        state: directory
+        owner: munge
+        group: munge
+        mode: "0700"
+
+    - name: Generate a MUNGE key if the package did not create one
+      ansible.builtin.command:
+        cmd: dd if=/dev/urandom of=/etc/munge/munge.key bs=1024 count=1
+        creates: /etc/munge/munge.key
+      notify:
+        - Restart MUNGE
+
+    - name: Secure the MUNGE key
+      ansible.builtin.file:
+        path: /etc/munge/munge.key
+        state: file
+        owner: munge
+        group: munge
+        mode: "0400"
+
+    - name: Ensure MUNGE is enabled and running
+      ansible.builtin.service:
+        name: munge
+        state: started
+        enabled: true
+
+    - name: Create the Slurm state, spool, and log directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - path: /var/spool/slurmctld
+          owner: slurm
+          group: slurm
+          mode: "0700"
+        - path: /var/spool/slurmd
+          owner: root
+          group: root
+          mode: "0755"
+        - path: /var/log/slurm
+          owner: slurm
+          group: slurm
+          mode: "0750"
+
+    - name: Install the single-node Slurm configuration
+      ansible.builtin.template:
+        src: templates/slurm.conf.single-node.j2
+        dest: /etc/slurm/slurm.conf
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      notify:
+        - Restart Slurm services
+
+    - name: Install the OpenHPC example cgroup configuration
+      ansible.builtin.copy:
+        src: /etc/slurm/cgroup.conf.example
+        dest: /etc/slurm/cgroup.conf
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      notify:
+        - Restart Slurm services
+
+    - name: Install the custom MOTD
+      ansible.builtin.copy:
+        content: |
+          *******************************************************************************
+          *                    WELCOME TO NOT THE REAL SNELLIUS                         *
+          *******************************************************************************
+          *                                                                             *
+          * GENERAL INFORMATION:                                                        *
+          *   Service status and maintenance schedule: https://edu.nl/brncf             *
+          *                                                                             *
+          *******************************************************************************
+          *                                                                             *
+          *                               TU/e SCC                                      *
+          *                                                                             *
+          *                    Eindhoven University of Technology                       *
+          *                                                                             *
+          *                          Supercomputing Center                              *
+          *                                                                             *
+          *******************************************************************************
+        dest: /etc/motd
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure the SSH configuration include directory exists
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Enable password authentication for training users
+      ansible.builtin.copy:
+        content: |
+          PasswordAuthentication yes
+        dest: /etc/ssh/sshd_config.d/00-hpc-training.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Restart the SSH daemon
+
+    - name: Read the effective SSH daemon configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/sshd
+          - -T
+      register: sshd_effective_config
+      changed_when: false
+
+    - name: Verify that SSH password authentication is enabled
+      ansible.builtin.assert:
+        that:
+          - "'passwordauthentication yes' in sshd_effective_config.stdout_lines"
+        fail_msg: PasswordAuthentication yes is not the effective SSH daemon setting.
+
+    - name: Ensure the skeleton home directory exists
+      ansible.builtin.file:
+        path: /etc/skel
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the example Slurm batch script for new users
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          #SBATCH --job-name=hostname
+          #SBATCH --partition={{ slurm_partition_name }}
+          #SBATCH --nodes=1
+          #SBATCH --ntasks=1
+          #SBATCH --time=00:01:00
+          #SBATCH --output=hostname-%j.out
+
+          /bin/hostname
+        dest: /etc/skel/hostname.sbatch
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create the HPC school users
+      ansible.builtin.user:
+        name: "HPCuser{{ '%02d' | format(item) }}"
+        create_home: true
+        skeleton: /etc/skel
+        shell: /bin/bash
+        password: "{{ hpc_user_password_hash }}"
+        update_password: on_create
+        state: present
+      loop: "{{ range(1, 76) | list }}"
+
+    - name: Ensure each HPC school user has a private SSH directory
+      ansible.builtin.file:
+        path: "/home/HPCuser{{ '%02d' | format(item) }}/.ssh"
+        state: directory
+        owner: "HPCuser{{ '%02d' | format(item) }}"
+        group: "HPCuser{{ '%02d' | format(item) }}"
+        mode: "0700"
+      loop: "{{ range(1, 76) | list }}"
+
+    - name: Generate a passwordless SSH key pair for each HPC school user
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/ssh-keygen
+          - -q
+          - -t
+          - ed25519
+          - -N
+          - ""
+          - -C
+          - "HPCuser{{ '%02d' | format(item) }}@not-the-real-snellius"
+          - -f
+          - "/home/HPCuser{{ '%02d' | format(item) }}/.ssh/id_ed25519"
+      args:
+        creates: "/home/HPCuser{{ '%02d' | format(item) }}/.ssh/id_ed25519"
+      become: true
+      become_user: "HPCuser{{ '%02d' | format(item) }}"
+      loop: "{{ range(1, 76) | list }}"
+
+    - name: Read the public SSH keys of the HPC school users
+      ansible.builtin.slurp:
+        src: "/home/HPCuser{{ '%02d' | format(item) }}/.ssh/id_ed25519.pub"
+      loop: "{{ range(1, 76) | list }}"
+      register: hpc_user_public_keys
+
+    - name: Authorize each HPC school user's key for the OnDemand console
+      ansible.posix.authorized_key:
+        user: "HPCuser{{ '%02d' | format(item.item) }}"
+        key: "{{ item.content | b64decode | trim }}"
+        state: present
+      loop: "{{ hpc_user_public_keys.results }}"
+      loop_control:
+        label: "HPCuser{{ '%02d' | format(item.item) }}"
+
+    - name: Restore SELinux contexts for the HPC school users' SSH files
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/restorecon
+          - -R
+          - /home
+      changed_when: false
+      when: (ansible_facts.selinux | default({})).status | default('disabled') == 'enabled'
+
+    - name: Ensure Slurm services are enabled and running
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - slurmctld
+        - slurmd
+
+  handlers:
+    - name: Restart the Open OnDemand Apache service
+      ansible.builtin.service:
+        name: httpd
+        state: restarted
+        enabled: true
+
+    - name: Restart MUNGE
+      ansible.builtin.service:
+        name: munge
+        state: restarted
+        enabled: true
+
+    - name: Restart Slurm services
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop:
+        - slurmctld
+        - slurmd
+
+    - name: Restart the SSH daemon
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+        enabled: true
+
+- name: Verify the single-node Slurm and Open OnDemand test cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ondemand_servername: snellius.hpc-lab-tue.src.surf-hosted.nl
+    jupyterlab_version: "4.6.6"
+    jupyterlab_install_dir: /opt/jupyterlab
+    hpc_training_home_dirs: "{{ query('sequence', 'start=1 end=75 format=%02d') | map('regex_replace', '^', '/home/HPCuser') | list }}"
+
+  tasks:
+    - name: Validate the generated Apache configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/httpd
+          - -t
+      changed_when: false
+
+    - name: Verify that the SCC logo is publicly available
+      ansible.builtin.uri:
+        url: http://127.0.0.1/public/scc-logo.png
+        headers:
+          Host: "{{ ondemand_servername }}"
+        follow_redirects: none
+        status_code: 200
+      changed_when: false
+
+    - name: Verify that the OnDemand dashboard requires PAM authentication
+      ansible.builtin.uri:
+        url: http://127.0.0.1/pun/sys/dashboard
+        headers:
+          Host: "{{ ondemand_servername }}"
+        follow_redirects: none
+        status_code: 401
+      changed_when: false
+
+    - name: Read the deployed Open OnDemand dashboard configuration
+      ansible.builtin.slurp:
+        src: /etc/ood/config/ondemand.d/ondemand.yml
+      register: ondemand_dashboard_config
+
+    - name: Verify that the training apps are pinned on the dashboard
+      ansible.builtin.assert:
+        that:
+          - "'sys/jupyter' in (ondemand_dashboard_config.content | b64decode)"
+          - "'sys/bc_desktop' in (ondemand_dashboard_config.content | b64decode)"
+          - "'sys/shell' in (ondemand_dashboard_config.content | b64decode)"
+        fail_msg: "The dashboard pinned_apps list is missing JupyterLab, Desktop, or Shell."
+        quiet: true
+
+    - name: Read the deployed dashboard logo view override
+      ansible.builtin.slurp:
+        src: /etc/ood/config/apps/dashboard/views/layouts/nav/_logo.html.erb
+      register: ondemand_dashboard_logo
+
+    - name: Verify that the dashboard branding shows the training portal name
+      ansible.builtin.assert:
+        that:
+          - "'Not The Real Snellius' in (ondemand_dashboard_config.content | b64decode)"
+          - "'dashboard_title' in (ondemand_dashboard_logo.content | b64decode)"
+        fail_msg: "The dashboard title or the logo view override is missing."
+        quiet: true
+
+    - name: Verify the managed JupyterLab installation
+      ansible.builtin.command:
+        argv:
+          - "{{ jupyterlab_install_dir }}/bin/jupyter"
+          - lab
+          - --version
+      register: jupyterlab_version_check
+      changed_when: false
+      failed_when: "jupyterlab_version_check.stdout | trim != jupyterlab_version"
+
+    - name: Verify that the JupyterLab launch page requires authentication
+      ansible.builtin.uri:
+        url: http://127.0.0.1/pun/sys/dashboard/batch_connect/sys/jupyter/session_contexts/new
+        headers:
+          Host: "{{ ondemand_servername }}"
+        follow_redirects: none
+        status_code: 401
+      changed_when: false
+
+    - name: Verify that the interactive desktop launch page requires authentication
+      ansible.builtin.uri:
+        url: http://127.0.0.1/pun/sys/dashboard/batch_connect/sys/bc_desktop/session_contexts/new
+        headers:
+          Host: "{{ ondemand_servername }}"
+        follow_redirects: none
+        status_code: 401
+      changed_when: false
+
+    - name: Verify that the cluster shell app requires authentication
+      ansible.builtin.uri:
+        url: http://127.0.0.1/pun/sys/shell/ssh/{{ ondemand_servername }}
+        headers:
+          Host: "{{ ondemand_servername }}"
+        follow_redirects: none
+        status_code: 401
+      changed_when: false
+
+    - name: Gather the interactive desktop prerequisite files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /usr/bin/Xvnc
+        - /usr/bin/xfce4-session
+        - /usr/bin/dbus-run-session
+        - /usr/local/bin/vncserver
+        - /opt/websockify/run
+        - /var/www/ood/apps/sys/bc_desktop/template/script.sh.erb
+        - /var/www/ood/apps/sys/bc_desktop/template/desktops/xfce.sh
+      register: desktop_prerequisites
+
+    - name: Assert that the interactive desktop prerequisites are executable
+      ansible.builtin.assert:
+        that: item.stat.executable
+        fail_msg: "{{ item.item }} is missing or not executable."
+        quiet: true
+      loop: "{{ desktop_prerequisites.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Wait for the Slurm controller to respond
+      ansible.builtin.command:
+        cmd: scontrol ping
+      register: slurm_controller_status
+      changed_when: false
+      retries: 10
+      delay: 3
+      until: slurm_controller_status.rc == 0
+
+    - name: Wait for the single compute node to become idle
+      ansible.builtin.command:
+        cmd: sinfo --Node --noheader --format=%t
+      register: slurm_node_status
+      changed_when: false
+      retries: 10
+      delay: 3
+      until: (slurm_node_status.stdout | trim) == "idle"
+
+    - name: Submit the example hostname batch script as a training user
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        cmd: sbatch --wait --output=/home/HPCuser01/slurm-hostname-test.out /etc/skel/hostname.sbatch
+        chdir: /tmp
+      register: slurm_batch_test
+      changed_when: false
+
+    - name: Read the example batch script output
+      ansible.builtin.command:
+        argv:
+          - /bin/cat
+          - /home/HPCuser01/slurm-hostname-test.out
+      register: slurm_batch_hostname_test
+      changed_when: false
+
+    - name: Show the Slurm batch hostname test result
+      ansible.builtin.debug:
+        msg: "Slurm batch hostname test succeeded: {{ slurm_batch_hostname_test.stdout | trim }}"
+
+    - name: Verify that Slurm honors a single-CPU request
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/srun
+          - --nodes=1
+          - --ntasks=1
+          - --cpus-per-task=1
+          - /usr/bin/nproc
+        chdir: /tmp
+      register: slurm_single_cpu_test
+      changed_when: false
+
+    - name: Verify that a one-CPU job receives exactly one CPU
+      ansible.builtin.assert:
+        that:
+          - slurm_single_cpu_test.stdout | trim == "1"
+        fail_msg: >-
+          A job requesting one CPU received
+          {{ slurm_single_cpu_test.stdout | trim }} CPUs. Make sure the
+          partition does not set Oversubscribe=EXCLUSIVE, which gives every
+          job all CPUs on the node.
+        quiet: true
+
+    - name: Verify that the desktop job script prepends the wrapper directory
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/grep
+          - -q
+          - 'export PATH="/usr/local/bin:'
+          - /var/www/ood/apps/sys/bc_desktop/submit.yml.erb
+      changed_when: false
+
+    - name: Find the training users' SSH key files
+      ansible.builtin.find:
+        paths: "{{ hpc_training_home_dirs }}"
+        recurse: true
+        depth: 3
+        file_type: file
+        patterns:
+          - id_ed25519
+          - authorized_keys
+      register: training_user_ssh_files
+
+    - name: Verify that every training user has an SSH key and an authorized key
+      ansible.builtin.assert:
+        that:
+          - training_user_ssh_files.matched | int == 150
+        fail_msg: >-
+          Expected one id_ed25519 private key and one authorized_keys file for
+          each of the 75 training users, found
+          {{ training_user_ssh_files.matched | int }} matching files.
+        quiet: true
+
+    - name: Run the OpenHPC Lmod environment in a login shell
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -lc
+          - "module --version 2>&1 && module avail 2>&1"
+      register: lmod_login_check
+      changed_when: false
+
+    - name: Verify that Lmod works without exposing the default OpenHPC modules
+      ansible.builtin.assert:
+        that:
+          - "'Modules based on Lua' in lmod_login_check.stdout"
+          - "'MODULEPATH is not set' not in lmod_login_check.stdout"
+          - "'hwloc/' not in lmod_login_check.stdout"
+        fail_msg: >-
+          Lmod is not functional in a login shell or the default OpenHPC
+          modules are still visible.
+        quiet: true
+
+    - name: Run a login shell inside a Slurm job as a training user
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/srun
+          - --nodes=1
+          - --ntasks=1
+          - --cpus-per-task=1
+          - /bin/bash
+          - -lc
+          - "type -t module && module --version 2>&1"
+        chdir: /tmp
+      register: lmod_job_login_check
+      changed_when: false
+
+    - name: Verify that Lmod works in a login shell inside a Slurm job
+      ansible.builtin.assert:
+        that:
+          - lmod_job_login_check.stdout_lines[0] | trim == "function"
+          - "'Modules based on Lua' in lmod_job_login_check.stdout"
+        fail_msg: >-
+          A login shell inside a Slurm job cannot use Lmod. The Open OnDemand
+          desktop runs inside a Slurm job, so its terminals would have no
+          module command.
+        quiet: true
+
+    - name: Read the CVMFS client configuration
+      ansible.builtin.slurp:
+        src: /etc/cvmfs/default.local
+      register: eessi_cvmfs_config
+
+    - name: Verify that the CVMFS client is configured for EESSI
+      ansible.builtin.assert:
+        that:
+          - "'CVMFS_CLIENT_PROFILE' in (eessi_cvmfs_config.content | b64decode)"
+          - "'CVMFS_QUOTA_LIMIT=10000' in (eessi_cvmfs_config.content | b64decode)"
+        fail_msg: >-
+          /etc/cvmfs/default.local is missing the single-client profile or the
+          quota limit.
+        quiet: true
+
+    - name: Query the installed CVMFS client package
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/rpm
+          - -q
+          - cvmfs
+      register: eessi_cvmfs_package
+      changed_when: false
+      failed_when: false
+
+    - name: Verify that the CVMFS client package is installed
+      ansible.builtin.assert:
+        that:
+          - eessi_cvmfs_package.rc == 0
+        fail_msg: "The cvmfs package is not installed."
+        quiet: true
+
+    - name: Check whether this host provides the FUSE device
+      ansible.builtin.stat:
+        path: /dev/fuse
+      register: eessi_fuse_device
+
+    - name: Find the installed EESSI modulefiles
+      ansible.builtin.find:
+        paths: /opt/ohpc/pub/modulefiles/EESSI
+        patterns:
+          - "*.lua"
+      register: eessi_installed_modulefiles
+      when: eessi_fuse_device.stat.exists
+
+    - name: Verify that the EESSI modulefiles are installed
+      ansible.builtin.assert:
+        that:
+          - eessi_installed_modulefiles.matched | int == 3
+          - "'EESSI/2023.06' in lmod_login_check.stdout"
+          - "'EESSI/2025.06' in lmod_login_check.stdout"
+          - "'EESSI/2026.06' in lmod_login_check.stdout"
+        fail_msg: >-
+          Expected the EESSI 2023.06, 2025.06 and 2026.06 modulefiles under
+          /opt/ohpc/pub/modulefiles/EESSI and in "module avail", found
+          {{ eessi_installed_modulefiles.matched | int }} modulefiles.
+        quiet: true
+      when: eessi_fuse_device.stat.exists
+
+    - name: Report that the EESSI modulefiles are not installed here
+      ansible.builtin.debug:
+        msg: >-
+          /dev/fuse is unavailable, so CVMFS cannot mount software.eessi.io and
+          the EESSI modulefiles are skipped. This is expected in the Podman
+          test container.
+      when: not eessi_fuse_device.stat.exists
+
+    - name: Verify passwordless SSH key login as a training user
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - StrictHostKeyChecking=no
+          - -o
+          - UserKnownHostsFile=/dev/null
+          - -o
+          - IdentitiesOnly=yes
+          - -i
+          - /home/HPCuser01/.ssh/id_ed25519
+          - localhost
+          - /bin/true
+      changed_when: false
