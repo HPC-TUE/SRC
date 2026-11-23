@@ -1,0 +1,10 @@
+# Sourced by the batch-connect job script after the VNC template has started
+# Xvnc on ${DISPLAY} and before the desktop session starts.
+
+echo "Waiting for the VNC server on ${host}:${port}..."
+if ! wait_until_port_used "${port}" 30; then
+    echo "The VNC server did not become ready on port ${port}." >&2
+    clean_up 1
+fi
+
+echo "VNC server ready on ${host}:${port} (display :${display})."

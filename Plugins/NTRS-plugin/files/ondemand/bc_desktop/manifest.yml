@@ -1,0 +1,10 @@
+---
+name: Desktop
+icon: fa://desktop
+category: Interactive Apps
+subcategory: Desktops
+role: batch_connect
+description: |
+  Launch an XFCE desktop on the Snellius training node. The desktop runs in a
+  Slurm job for one hour and is used directly in the web browser; no VNC client
+  is required.

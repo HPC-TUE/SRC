@@ -1,0 +1,14 @@
+servername: snellius.hpc-lab-tue.src.surf-hosted.nl
+
+use_rewrites: true
+pun_stage_cmd: 'sudo /opt/ood/nginx_stage/sbin/nginx_stage'
+host_regex: '[\w.-]+'
+rnode_uri: '/rnode'
+node_uri: '/node'
+auth:
+  - 'AuthType Basic'
+  - 'AuthName "Open OnDemand"'
+  - 'AuthBasicProvider PAM'
+  - 'AuthPAMService ood'
+  - 'Require valid-user'
+

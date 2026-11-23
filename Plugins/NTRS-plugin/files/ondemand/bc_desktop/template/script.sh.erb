@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Main batch-connect job process. The VNC template has already started Xvnc
+# and exported DISPLAY; websockify starts alongside this script.
+
+cd "${HOME}"
+
+# This job script is not a login shell, so Lmod is not initialized here. The
+# desktop terminals are login shells and do get module. Restore the default
+# environment only when the function happens to be available.
+if [[ $(type -t module) == "function" ]]; then
+    module purge && module restore
+fi
+
+echo "Launching the '<%= context.desktop %>' desktop on display ${DISPLAY}..."
+source "<%= session.staged_root.join("desktops", "#{context.desktop}.sh") %>"
+echo "The '<%= context.desktop %>' desktop ended with status $?"
