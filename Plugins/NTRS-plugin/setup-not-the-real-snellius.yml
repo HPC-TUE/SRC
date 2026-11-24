@@ -231,12 +231,6 @@
       changed_when: false
       failed_when: "'TigerVNC compatibility wrapper' not in vncserver_wrapper_help.stdout"
 
-    - name: Ensure the Open OnDemand Apache service is enabled and running
-      ansible.builtin.service:
-        name: httpd
-        state: started
-        enabled: true
-
     - name: Read the Open OnDemand SELinux boolean states
       ansible.builtin.command:
         argv:
@@ -455,6 +449,25 @@
         mode: "0644"
       notify:
         - Restart the Open OnDemand Apache service
+
+    # Start or restart Apache only after every portal, PAM, cluster, app, and
+    # authentication file is installed. A failure before this point must not
+    # leave a newly installed web service exposing a partial configuration.
+    - name: Validate the completed Open OnDemand Apache configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/httpd
+          - -t
+      changed_when: false
+
+    - name: Apply the completed Open OnDemand Apache configuration
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure the configured Open OnDemand Apache service is running
+      ansible.builtin.service:
+        name: httpd
+        state: started
+        enabled: true
 
     - name: Ensure the default OpenHPC modulefiles directory exists
       ansible.builtin.file:
