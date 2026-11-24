@@ -10,6 +10,7 @@
     ohpc_release_url: "{{ ohpc_repository_url }}/{{ ansible_facts.architecture }}/{{ ohpc_release_package }}"
     ondemand_signing_key_url: https://yum.osc.edu/ondemand/RPM-GPG-KEY-ondemand-SHA512
     ondemand_release_url: https://yum.osc.edu/ondemand/4.2/ondemand-release-web-4.2-1.el9.noarch.rpm
+    ondemand_servername: "{{ ansible_facts.fqdn }}"
     cvmfs_release_url: https://cvmrepo.s3.cern.ch/cvmrepo/yum/cvmfs-release-latest.noarch.rpm
     eessi_config_url: https://github.com/EESSI/filesystem-layer/releases/download/latest/cvmfs-config-eessi-latest.noarch.rpm
     eessi_modulefiles_dir: /opt/ohpc/pub/modulefiles/EESSI
@@ -287,7 +288,7 @@
         mode: "0644"
 
     - name: Install the Open OnDemand portal and PAM authentication configuration
-      ansible.builtin.copy:
+      ansible.builtin.template:
         src: files/ondemand/ood_portal.yml
         dest: /etc/ood/config/ood_portal.yml
         owner: root
@@ -327,7 +328,7 @@
         - Restart the Open OnDemand Apache service
 
     - name: Install the Snellius cluster configuration for Open OnDemand
-      ansible.builtin.copy:
+      ansible.builtin.template:
         src: files/ondemand/snellius.yml
         dest: /etc/ood/config/clusters.d/snellius.yml
         owner: root
@@ -883,10 +884,10 @@
 - name: Verify the single-node Slurm and Open OnDemand test cluster
   hosts: localhost
   connection: local
-  gather_facts: false
+  gather_facts: true
 
   vars:
-    ondemand_servername: snellius.hpc-lab-tue.src.surf-hosted.nl
+    ondemand_servername: "{{ ansible_facts.fqdn }}"
     jupyterlab_version: "4.6.6"
     jupyterlab_install_dir: /opt/jupyterlab
     hpc_training_home_dirs: "{{ query('sequence', 'start=1 end=75 format=%02d') | map('regex_replace', '^', '/home/HPCuser') | list }}"
