@@ -331,6 +331,26 @@
       notify:
         - Restart the Open OnDemand Apache service
 
+    # Avoid a first-login host-key prompt in the OnDemand shell. Read the
+    # public key from this VM as root rather than using unauthenticated
+    # ssh-keyscan output. Other administrators' system-wide entries are kept.
+    - name: Read the local Ed25519 SSH host public key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: ondemand_ssh_host_public_key
+
+    - name: Trust the current hostname for OnDemand shell clients
+      ansible.builtin.blockinfile:
+        path: /etc/ssh/ssh_known_hosts
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+        marker: "# {mark} NTRS OnDemand shell host key"
+        block: >-
+          {{ ondemand_servername }},localhost,127.0.0.1
+          {{ ondemand_ssh_host_public_key.content | b64decode | trim }}
+
     - name: Install the Apache PAM authentication module configuration
       ansible.builtin.copy:
         src: files/ondemand/55-authnz_pam.conf
@@ -1227,7 +1247,7 @@
           test container.
       when: not eessi_fuse_device.stat.exists
 
-    - name: Verify passwordless SSH key login as a training user
+    - name: Verify strict host-key checking for the OnDemand shell login host
       become: true
       become_user: HPCuser01
       ansible.builtin.command:
@@ -1236,13 +1256,17 @@
           - -o
           - BatchMode=yes
           - -o
-          - StrictHostKeyChecking=no
+          - ConnectTimeout=10
+          - -o
+          - StrictHostKeyChecking=yes
           - -o
           - UserKnownHostsFile=/dev/null
+          - -o
+          - GlobalKnownHostsFile=/etc/ssh/ssh_known_hosts
           - -o
           - IdentitiesOnly=yes
           - -i
           - /home/HPCuser01/.ssh/id_ed25519
-          - localhost
+          - "{{ ondemand_servername }}"
           - /bin/true
       changed_when: false
