@@ -62,10 +62,27 @@
           - dnf-plugins-core
         state: present
 
+    - name: Check whether the Rocky Linux CRB repository is enabled
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/dnf
+          - --quiet
+          - repolist
+          - --enabled
+          - crb
+      register: rocky_crb_repository
+      changed_when: false
+
     - name: Enable the Rocky Linux CRB repository
-      community.general.dnf_config_manager:
-        name: crb
-        state: enabled
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/dnf
+          - config-manager
+          - --set-enabled
+          - crb
+      when: >-
+        (rocky_crb_repository.stdout_lines
+        | select('match', '^crb[ \t]+') | list) | length == 0
 
     - name: Import the pinned OpenHPC package-signing key
       ansible.builtin.rpm_key:

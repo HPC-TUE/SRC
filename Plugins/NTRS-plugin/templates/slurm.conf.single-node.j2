@@ -32,7 +32,10 @@ MpiDefault=none
 ProctrackType=proctrack/cgroup
 TaskPlugin=task/affinity
 PropagateResourceLimitsExcept=MEMLOCK
-Epilog=/etc/slurm/slurm.epilog.clean
+# Do not use OpenHPC's slurm.epilog.clean here: it calls squeue in the job
+# completion path, but skips its process cleanup whenever slurmctld shares the
+# compute node. On this single host it can block completion without doing any
+# useful cleanup.
 ReturnToService=2
 SlurmctldParameters=enable_configless
 LaunchParameters=use_interactive_step
