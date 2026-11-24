@@ -46,7 +46,10 @@ JobAcctGatherType=jobacct_gather/none
 JobCompType=jobcomp/filetxt
 JobCompLoc=/var/log/slurm/slurm_jobcomp.log
 
-NodeName={{ slurm_node_name }} NodeHostname={{ ansible_facts.hostname }} CPUs={{ slurm_cpus }} RealMemory={{ slurm_real_memory_mb }} State=UNKNOWN
+# This controller and compute node are the same host. Keep Slurm daemon
+# communication on IPv4 loopback instead of the machine's public hostname,
+# which may resolve to a firewalled external interface or an IPv6-only alias.
+NodeName={{ slurm_node_name }} NodeHostname={{ slurm_node_name }} NodeAddr=127.0.0.1 CPUs={{ slurm_cpus }} RealMemory={{ slurm_real_memory_mb }} State=UNKNOWN
 # Share the node between jobs so --cpus-per-task is honored. With EXCLUSIVE,
 # every job claims the whole node and receives all CPUs regardless of the
 # requested count.
