@@ -6,15 +6,20 @@ desktop.
 
 ## Usage
 
-Run the playbook on the target host as root. The `community.general` and
-`ansible.posix` collections must already be installed.
+Run the playbook on the target host as root. Its Ansible dependencies are
+available as Rocky Linux 9 and EPEL 9 RPM packages; Ansible Galaxy is not
+required:
 
 ```bash
-sudo ansible-playbook setup-not-the-real-snellius.yml
+dnf install -y epel-release
+dnf install -y ansible-core ansible-collection-ansible-posix
+ansible-playbook setup-not-the-real-snellius.yml
 ```
 
 The playbook targets `localhost` with a local connection; no inventory, SSH
-connection, or `become` is used. Rerunning it is idempotent.
+connection, or `become` is used. EPEL provides `ansible.posix` 1.6.2, satisfying
+the minimum version declared in `requirements.yml`. Rerunning the playbook is
+idempotent.
 
 ## What it configures
 
