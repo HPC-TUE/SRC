@@ -3,7 +3,7 @@ v2:
   metadata:
     title: "Snellius Cluster"
   login:
-    host: "snellius.hpc-lab-tue.src.surf-hosted.nl"
+    host: "{{ ondemand_servername }}"
   job:
     adapter: "slurm"
 
