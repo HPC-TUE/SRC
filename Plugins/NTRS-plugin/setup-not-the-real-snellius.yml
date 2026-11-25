@@ -1,7 +1,6 @@
 ---
 - name: Install OpenHPC and configure a single-node Slurm test cluster
   hosts: localhost
-  connection: local
   gather_facts: true
 
   vars:
@@ -916,7 +915,6 @@
 
 - name: Verify the single-node Slurm and Open OnDemand test cluster
   hosts: localhost
-  connection: local
   gather_facts: true
 
   vars:
