@@ -30,7 +30,10 @@ DefMemPerCPU=1024
 SwitchType=switch/none
 MpiDefault=none
 ProctrackType=proctrack/cgroup
-TaskPlugin=task/affinity
+# task/cgroup enforces the allocated memory, swap, CPUs, and devices, while
+# task/affinity applies the CPU affinity mask. The cgroup.conf settings alone do
+# not activate enforcement; task/cgroup must be loaded here as well.
+TaskPlugin=task/cgroup,task/affinity
 PropagateResourceLimitsExcept=MEMLOCK
 # Do not use OpenHPC's slurm.epilog.clean here: it calls squeue in the job
 # completion path, but skips its process cleanup whenever slurmctld shares the
