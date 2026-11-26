@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+#
+# Enforce the resources allocated to each Slurm job. These settings take effect
+# only when TaskPlugin includes task/cgroup in slurm.conf.
+ConstrainCores=yes
+ConstrainDevices=yes
+ConstrainRAMSpace=yes
+ConstrainSwapSpace=yes

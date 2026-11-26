@@ -720,11 +720,10 @@
       notify:
         - Restart Slurm services
 
-    - name: Install the OpenHPC example cgroup configuration
-      ansible.builtin.copy:
-        src: /etc/slurm/cgroup.conf.example
+    - name: Install the cgroup resource-containment configuration
+      ansible.builtin.template:
+        src: templates/cgroup.conf.j2
         dest: /etc/slurm/cgroup.conf
-        remote_src: true
         owner: root
         group: root
         mode: "0644"
@@ -1100,6 +1099,83 @@
           partition does not set Oversubscribe=EXCLUSIVE, which gives every
           job all CPUs on the node.
         quiet: true
+
+    - name: Verify that Slurm honors a two-CPU request
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/srun
+          - --nodes=1
+          - --ntasks=1
+          - --cpus-per-task=2
+          - /usr/bin/nproc
+        chdir: /tmp
+      register: slurm_two_cpu_test
+      changed_when: false
+
+    - name: Verify that a two-CPU job receives exactly two CPUs
+      ansible.builtin.assert:
+        that:
+          - slurm_two_cpu_test.stdout | trim == "2"
+        fail_msg: >-
+          A job requesting two CPUs received
+          {{ slurm_two_cpu_test.stdout | trim }} CPUs.
+        quiet: true
+
+    - name: Discover the memory limit of a job cgroup
+      become: true
+      become_user: HPCuser01
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/srun
+          - --nodes=1
+          - --ntasks=1
+          - --cpus-per-task=1
+          - --mem=512M
+          - /bin/bash
+          - -c
+          - |
+            cgroup=$(sed -n 's/^0:://p' /proc/self/cgroup)
+            while [ -n "${cgroup}" ] && [ "${cgroup}" != "/" ]; do
+              if [ -r "/sys/fs/cgroup${cgroup}/memory.max" ]; then
+                limit=$(cat "/sys/fs/cgroup${cgroup}/memory.max")
+                if [ "${limit}" != "max" ]; then
+                  echo $((limit / 1024 / 1024))
+                  exit 0
+                fi
+              fi
+              cgroup=$(dirname "${cgroup}")
+            done
+            echo "No finite memory.max found in the job cgroup hierarchy." >&2
+            exit 1
+        chdir: /tmp
+      register: slurm_memory_test
+      changed_when: false
+      failed_when: false
+
+    - name: Verify that a job is confined to its allocated memory
+      ansible.builtin.assert:
+        that:
+          - slurm_memory_test.rc == 0
+          - slurm_memory_test.stdout | trim == "512"
+        fail_msg: >-
+          A job requesting 512 MB did not receive a 512 MB cgroup memory limit.
+          Slurm must load task/cgroup and ConstrainRAMSpace must be enabled.
+          stdout: {{ slurm_memory_test.stdout | trim }}
+          stderr: {{ slurm_memory_test.stderr | trim }}
+        quiet: true
+
+    - name: Verify that Slurm reports no missing memory-enforcement warning
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/awk
+          - |
+            /slurmctld version/ { warning = 0; startup_seen = 1 }
+            /No memory enforcing mechanism configured/ { warning = 1 }
+            END { exit !(startup_seen && !warning) }
+          - /var/log/slurm/slurmctld.log
+      changed_when: false
 
     - name: Verify that the desktop job script prepends the wrapper directory
       ansible.builtin.command:

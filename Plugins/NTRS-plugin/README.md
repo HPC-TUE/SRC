@@ -25,6 +25,8 @@ idempotent.
 
 - An OpenHPC 3.x Slurm controller and compute node on `localhost`, partition
   `rome` with a one-hour limit and shared (non-exclusive) CPUs.
+- Slurm cgroup enforcement of allocated CPUs, memory, swap, and devices using
+  the stacked `task/cgroup,task/affinity` plugins and a managed `cgroup.conf`.
 - Lmod with the default OpenHPC modulefiles removed and the EESSI 2023.06,
   2025.06, and 2026.06 modulefiles when CVMFS can be mounted.
 - PAM-authenticated Open OnDemand with an SCC-branded dashboard, JupyterLab, and
